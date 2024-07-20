@@ -1,0 +1,1 @@
+rm *png *pov *bin *usd

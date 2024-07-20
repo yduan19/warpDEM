@@ -1,0 +1,9 @@
+*bin
+*png
+*pov
+*usd
+results/
+.vscode/
+__pycache__/
+notebook/
+visualization/

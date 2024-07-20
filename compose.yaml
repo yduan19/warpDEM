@@ -1,0 +1,12 @@
+services:
+  warp:
+    build: .
+    # shm_size: 8gb
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    command: tail -f /dev/null

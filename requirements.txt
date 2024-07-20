@@ -1,0 +1,8 @@
+warp-lang
+# torch
+
+jupyter
+ipykernel
+usd-core 
+matplotlib 
+pyglet
