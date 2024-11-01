@@ -2,6 +2,7 @@
 *png
 *pov
 *usd
+*sh
 results/
 .vscode/
 __pycache__/
