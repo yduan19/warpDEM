@@ -6,20 +6,16 @@
         "k_damp": 1,
         "k_friction": 1000.0,
         "k_mu": 0.4,
-        "e": 0.01
+        "e": 0.01,
+        "tc": 1.5e-3
+
     },
    
     "sys_params" : 
     {
-        "sim_dt": 0.001,
-        "sim_substeps": 10,
+        "sim_dt_resolution": 50,
+        "sim_frame_dt": 0.01,
         "sim_time": 1,
-
-
-
-        "frame_count": 100,
-        "frame_dt": 0.01,
-        
         "sim_gravity": [0, 0, -9.8],
         "grid": [128,128,128],
         "grid_particle_size_ratio": 5

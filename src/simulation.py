@@ -2,10 +2,13 @@ import warp as wp
 import warp.render
 import numpy as np
 import json
+import csv
+from collections import defaultdict
 from src.params_sys import sys_params
 from src.particle_sys import particle_sys
 from src.forces import apply_forces, integrate 
 from src.particles import Particles
+from src.add_particles import _particle_grid
 # import keyboard
 
 wp.init()
@@ -20,14 +23,14 @@ class Simulation:
         self.particle_sys = particle_sys(**data['particle_params'])
 
         # Simulation parameters
-        self.sim_dt = self.sys_params.sim_dt
-        self.sim_substeps = self.sys_params.sim_substeps
+        self.sim_dt = self.particle_sys.tc/self.sys_params.sim_dt_resolution
+        self.sim_frame_dt = self.sys_params.sim_frame_dt
+        self.frame_interval_steps = int(self.sim_frame_dt/self.sim_dt)
         self.sim_end_time = self.sys_params.sim_time
         self.sim_time = 0.0
 
         self.sim_steps = int(self.sim_end_time / self.sim_dt) 
-        self.frame_dt = self.sim_dt * self.sim_substeps
-        self.frame_count = int(self.sim_end_time/self.frame_dt)
+        self.frame_count = int(self.sim_end_time/self.sim_frame_dt)
 
         # Particle system parameters
         self.point_radius = self.particle_sys.point_radius
@@ -37,7 +40,7 @@ class Simulation:
         
         
 
-        tc = 50*self.sim_dt
+        tc = self.particle_sys.tc
         self.e = self.particle_sys.e
         self.k_contact = np.square(np.pi/tc)+np.square(np.log(self.e)/tc)
         self.k_friction = 2.0/7.0 * self.k_contact
@@ -67,17 +70,36 @@ class Simulation:
 
         # OPENGL renderer
         self.renderer = wp.render.OpenGLRenderer(
-                    camera_pos=(-40.0, 30, 00.0),
-                    camera_front=(1, -0.3, 0),
-                    draw_axis=False,
-                )
+            camera_pos=(-40.0, 30.0, 0.0),
+            camera_front=(1.0, -0.3, 0.0),
+            camera_up=(0.0, 1.0, 0.0),
+            near_plane=1.0,
+            far_plane=1000.0,
+            camera_fov=60.0,
+            draw_axis=True,
+            draw_grid=True,
+            up_axis='Y',
+            show_info=True,
+            scaling=1.0,
+            enable_mouse_interaction=True,
+            enable_keyboard_interaction=True
+        )
         self.renderer.render_ground()
+
+        # Add collision tracking structures
+        self.collision_tracking = defaultdict(lambda: {'start_time': None, 'collisions': []})
+        self.collision_output_file = 'collision_data.csv'
+        
+        # Create/initialize the CSV file with headers
+        with open(self.collision_output_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Particle1_ID', 'Particle2_ID', 'Start_Time', 'Duration'])
 
         
     
     def add_particles(self):
         
-        x = Simulation._particle_grid(dim_x = 4, dim_y = 1, dim_z = 16, lower = (0.0, 0.0, 0.0), radius = self.point_radius)
+        x = _particle_grid(dim_x = 4, dim_y = 1, dim_z = 16, lower = (0.0, 0.0, 0.0), radius = self.point_radius)
         v = np.ones([len(x), 3]) * np.array([0.0, 0.0, 0.0])
         f = np.zeros_like(v)
 
@@ -94,7 +116,6 @@ class Simulation:
         # Double the selected elements
         radius[indices_to_double] = 0.1*2
 
-
         # Determine inv_mass
         inv_mass=1.0/(1333*np.pi*radius**3)
         mass = (1333*np.pi*radius**3)
@@ -102,18 +123,46 @@ class Simulation:
 
         return x,v,f,radius,mass,inv_mass
 
-    @staticmethod
-    def _particle_grid(dim_x, dim_y, dim_z, lower, radius, jitter = 0.1):
-        points = np.meshgrid(np.linspace(0, dim_x, dim_x), np.linspace(0, dim_y, dim_y), np.linspace(0, dim_z, dim_z))
-        points_t = np.array((points[0], points[1], points[2])).T * radius * 4.8 + np.array(lower)
-        points_t = points_t + np.random.rand(*points_t.shape) * radius * jitter
-
-        points_t = points_t.reshape((-1, 3))
-        points_t[:,1] = points_t[:,1] + 20
-        return points_t
+    def track_collisions(self, particle_ids, forces):
+        """Track collision start and end times between particles"""
+        current_time = self.sim_time
+        
+        for i, force in enumerate(forces):
+            if np.any(force != 0):  # There's a collision
+                particle_id = particle_ids[i]
+                for j in range(i + 1, len(forces)):
+                    if np.any(forces[j] != 0):  # Check interaction with other particles
+                        other_id = particle_ids[j]
+                        collision_pair = tuple(sorted([particle_id, other_id]))
+                        
+                        if self.collision_tracking[collision_pair]['start_time'] is None:
+                            # Start of new collision
+                            self.collision_tracking[collision_pair]['start_time'] = current_time
+            else:
+                # Check for collision endings
+                particle_id = particle_ids[i]
+                ended_collisions = []
+                
+                for pair, data in self.collision_tracking.items():
+                    if particle_id in pair and data['start_time'] is not None:
+                        duration = current_time - data['start_time']
+                        if duration > 0:  # Only record meaningful collisions
+                            data['collisions'].append({
+                                'start_time': data['start_time'],
+                                'duration': duration
+                            })
+                            # Write to CSV
+                            with open(self.collision_output_file, 'a', newline='') as f:
+                                writer = csv.writer(f)
+                                writer.writerow([
+                                    pair[0], pair[1],
+                                    data['start_time'],
+                                    duration
+                                ])
+                        data['start_time'] = None
 
     def gpu_simulate(self):
-        for _ in range(self.sim_substeps):
+        for _ in range(self.frame_interval_steps):
             wp.launch(
                 kernel=apply_forces,
                 dim=len(self.x),
@@ -136,6 +185,11 @@ class Simulation:
                 inputs=[self.x, self.v, self.f, (0.0, -9.8, 0.0), self.sim_dt, self.inv_mass,self.r],
             )
 
+            # # Get forces from GPU to track collisions
+            # forces = self.f.numpy()
+            # particle_ids = np.arange(len(self.x))
+            # self.track_collisions(particle_ids, forces)
+
     def step(self):
         with wp.ScopedTimer("step", active=True):
             with wp.ScopedTimer("grid build", active=False):
@@ -146,12 +200,7 @@ class Simulation:
             else:
                 self.gpu_simulate()
 
-            self.sim_time += self.frame_dt
-
-                
-
-
-        
+            self.sim_time += self.sim_frame_dt
             
 
     
@@ -159,17 +208,17 @@ class Simulation:
         t=0
         while self.renderer.is_running:
 
-            t+=1
-            if t % 50==0:
+            # t+=1
+            # if t % 100==0:
 
-                x,v,f,r,mass,inv_mass = self.add_particles()
-                # self.particles.add_batch(self.x, self.v, self.f, self.r, self.mass, self.inv_mass)
-                self.x, self.v, self.f, self.r, self.mass, self.inv_mass = Particles.add_batch(self.x, self.v, self.f, self.r, self.mass, self.inv_mass, x, v, f, r, mass, inv_mass)
+            #     x,v,f,r,mass,inv_mass = self.add_particles()
+            #     # self.particles.add_batch(self.x, self.v, self.f, self.r, self.mass, self.inv_mass)
+            #     self.x, self.v, self.f, self.r, self.mass, self.inv_mass = Particles.add_batch(self.x, self.v, self.f, self.r, self.mass, self.inv_mass, x, v, f, r, mass, inv_mass)
 
-                # x,v,f,r,mass,inv_mass = self.add_particles()
-                # self.particles.add_batch(x,v,f,r,mass,inv_mass)
-                # # print(self.particles.r.shape)
-                # self.x, self.v, self.f, self.r, self.mass, self.inv_mass = self.particles.set_particles_gpu()
+            #     # x,v,f,r,mass,inv_mass = self.add_particles()
+            #     # self.particles.add_batch(x,v,f,r,mass,inv_mass)
+            #     # # print(self.particles.r.shape)
+            #     # self.x, self.v, self.f, self.r, self.mass, self.inv_mass = self.particles.set_particles_gpu()
 
             self.step()
             self.render()
@@ -218,7 +267,7 @@ class Simulation:
 if __name__ == '__main__':
 
     sim=Simulation()
-    with wp.ScopedTimer("total", active=True):
+    with wp.ScopedTimer("total", active=False):
         sim.run()
     # sim.add_particles()
     # sim.write2bin()

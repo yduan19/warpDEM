@@ -1,6 +1,9 @@
 import warp as wp
 import numpy
 
+
+def periodicBoundaries()
+
 class RotatingTumbler:
     def __init__(self):
         i = 0

@@ -10,13 +10,12 @@ class particle_sys:
     k_friction: float
     k_mu: float
     e: float
+    tc: float
     
 
 if __name__ == '__main__':
     with open('input/heapflow.json', 'r') as f:
         data=json.load(f)
-
-
 
     particle_param = particle_sys(**data['particle_params'])
 

@@ -1,6 +1,14 @@
 import warp as wp
 
 @wp.func
+def periodicBoundaries(x:wp.vec3,x_min:float,x_max:float):
+    if x[0]>x_max: 
+        x[0] = x[0] - (x_max - x_min)
+    elif x<x_min:
+        x = x + (x_max - x_min)
+    return x
+
+@wp.func
 def contact_force(n: wp.vec3, v: wp.vec3, c: float, k_n: float, k_d: float, k_f: float, k_mu: float):
     '''
     n: contact normal
@@ -70,6 +78,8 @@ def apply_forces(
     # if c < cohesion_ground:
     #     f = f + contact_force(n, v, c, k_contact, k_damp, k_friction, k_mu)
 
+    in_contact = False
+    
     # front contact
     n = wp.vec3(1.0, 0.0, 0.0)
     c = wp.dot(n, x)
@@ -176,7 +186,6 @@ def integrate(
     if c > cohesion_ground:
         v[tid] = v_new
         x[tid] = x_new
-
     
 
     

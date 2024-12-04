@@ -4,10 +4,8 @@ from typing import Tuple
 
 @dataclass
 class sys_params:
-    frame_dt: float
-    frame_count: int
-    sim_substeps: int
-    sim_dt: float
+    sim_dt_resolution: int
+    sim_frame_dt: float
     sim_time: float
     sim_gravity: Tuple[float, float, float]
     grid: Tuple[float, float, float]
