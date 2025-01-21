@@ -94,7 +94,6 @@ class Simulation:
         # Double the selected elements
         radius[indices_to_double] = 0.1*2
 
-
         # Determine inv_mass
         inv_mass=1.0/(1333*np.pi*radius**3)
         mass = (1333*np.pi*radius**3)
